@@ -293,19 +293,121 @@ WE 导出 mp4  →  Hanabi 或 mpv 循环播放
 
 ---
 
+## Phase 0：WE 渲染修复（fake desktop hierarchy）
+
+> 原设计假设 WE 已经能在 Proton 下正常渲染壁纸。
+> 实测发现 Wine 缺少 Progman/WorkerW 窗口层级，WE 渲染器无法初始化。
+> 本节记录修复过程和最终方案。
+
+### 问题根因
+
+WE 在 Windows 上的渲染流程：
+1. `FindWindowW("Progman")` → 找到桌面 Program Manager 窗口
+2. `SendMessageTimeoutW(Progman, 0x052C, ...)` → 触发 WorkerW 创建
+3. `EnumChildWindows(desktop, callback)` → 在桌面子窗口中搜索：
+   - 找到 class="WorkerW" 且有 SHELLDLL_DefView 子窗口的 WorkerW
+   - 通过 `FindWindowExW(NULL, thatWorkerW, "WorkerW")` 找到下一个 WorkerW
+   - 检查该 WorkerW 宽度 > 256px → 作为渲染目标
+4. 在渲染目标 WorkerW 上创建 D3D11 swap chain
+
+Wine 没有 Progman 窗口 → `FindWindowW("Progman")` 返回 NULL → 渲染器初始化失败
+→ 渲染定时器回调指向无效地址 0x1092 → 持续崩溃循环。
+
+### 解决方案：自定义 dwmapi.dll
+
+通过 per-app Wine DLL override，让 wallpaper64.exe 加载我们的 dwmapi.dll。
+该 DLL 在首次 `DwmIsCompositionEnabled()` 调用时创建完整的假桌面层级：
+
+```
+Z-order（前 → 后）：
+  Progman ("Program Manager", WS_POPUP)
+    → WorkerW-icons (WS_POPUP, 包含 SHELLDLL_DefView → SysListView32)
+      → WorkerW-render (WS_POPUP, WE 的渲染目标)
+```
+
+**关键实现细节**：
+- `SetWindowPos(HWND_BOTTOM)` 必须按 Progman → icons → render 顺序调用
+  （每次 HWND_BOTTOM 将窗口推到最底，后调用的在更底层）
+- FakeProgmanProc 处理 0x052C 消息直接返回 0（模拟 WorkerW spawn 成功）
+- 所有窗口使用 `WS_EX_NOACTIVATE` 避免抢夺焦点
+- Per-app override 确保只有 wallpaper64.exe 加载假 DLL，launcher.exe/CEF 不受影响
+
+**Wine 注册表配置**（`compatdata/431960/pfx/user.reg`）：
+```ini
+[Software\\Wine\\AppDefaults\\wallpaper64.exe\\DllOverrides]
+"dwmapi"="native"
+```
+
+### 实测结果
+
+| 项目 | 结果 |
+|------|------|
+| Scene 壁纸渲染 | **正常**，动画流畅，含音频 |
+| Video 壁纸渲染 | 画面渲染正常但随后崩溃（Wine Media Foundation 不完整） |
+| DXVK 初始化 | D3D11CreateDevice 成功，Feature Level 11.1，DXVK v2.7.1 |
+| WE UI | 可正常使用，选壁纸、切壁纸均正常 |
+| 0x1092 崩溃 | 仍有少量（非致命，SEH 恢复），不影响正常运行 |
+
+### Video 壁纸崩溃分析
+
+- 崩溃点：`wallpaper64.exe + 0xE7C31`
+- 原因：`mfreadwrite.dll` 被过早卸载，WE 持有的 COM vtable 指向已释放内存
+- 这是 Wine/Proton 的 Media Foundation 兼容性问题，与我们的修改无关
+- 规避：使用 Scene 类型壁纸（D3D11 GPU 渲染，不走 MF）
+
+### 源码位置
+
+- `fake-workerw/dwmapi-override.c` — 自定义 dwmapi.dll 源码
+- `fake-workerw/dwmapi.def` — DLL 导出定义
+- `launch-we.sh` — Steam 启动参数脚本
+
+---
+
 ## 实测数据记录
 
 > 以下各节在对应 Task 完成后由 Worker 填写实测数据。
 
 ### Task 1 实测数据
 
+#### X11 侧侦察结果（Phase 0 之前，无 dwmapi override）
+
+**环境信息**
+- 屏幕分辨率：2560x1440@74.94Hz (HDMI-2)
+- Xwayland 由 Mutter 管理
+- WE 通过 GE-Proton10-28 运行
+
+**WE 进程架构**
+| 进程 | PID | 角色 |
+|------|-----|------|
+| wallpaper64.exe | — | 壁纸渲染器（`-language schinese -updateuicmd`） |
+| ui32.exe (主) | — | 壁纸浏览 UI（Chromium 内核） |
+| ui32.exe (GPU) | — | Chromium GPU 进程 |
+| ui32.exe (renderer) | — | Chromium 渲染进程 |
+| explorer.exe | — | Wine 桌面管理（系统托盘） |
+
+**WE WM_CLASS 确认**：`"steam_app_431960"` / `"steam_app_431960"`
+
+#### Phase 0 修复后状态
+
+dwmapi override 创建假桌面层级后：
+- WE 成功 `FindWindowW("Progman")` → 找到我们创建的 Progman
+- WE 成功通过 EnumChildWindows 找到 WorkerW-render 作为渲染目标
+- DXVK 完整初始化：D3D11 设备、swap chain、Presenter 均创建成功
+- 渲染窗口现在是 **mapped 且 visible** 的全屏窗口（2560x1440）
+
 | 项目 | 结果 |
 |------|------|
-| WE 窗口标题 | （待填） |
-| WE WM_CLASS | （待填） |
-| global.get_window_actors() 可见 | （待填） |
-| Clutter.Clone 渲染结果 | （待填） |
-| 遮挡/最小化行为 | （待填） |
+| WE 窗口标题 | ""（WorkerW-render，WE 在其上渲染） |
+| WE WM_CLASS | `steam_app_431960`（所有 WE 进程窗口共用） |
+| 渲染窗口状态 | **Mapped, Visible**（通过 fake desktop hierarchy 解决） |
+| Clutter.Clone 可行性 | **待验证**（渲染窗口已 visible，理论上可 Clone） |
+| 遮挡/最小化行为 | 待验证 |
+
+#### 下一步
+
+渲染窗口已经 visible，需要在 Looking Glass 中确认：
+1. WorkerW-render 窗口是否出现在 `global.get_window_actors()` 中
+2. Clutter.Clone 是否能正确克隆该窗口的内容
 
 ### Task 2 实测数据
 

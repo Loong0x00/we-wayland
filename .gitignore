@@ -1,0 +1,19 @@
+# Compiled binaries
+*.dll
+*.exe
+*.o
+*.obj
+
+# Crash dumps
+*.mdmp
+
+# Wine/WE logs
+*.log
+
+# Reference repos (local only)
+refs/
+
+# Editor
+*.swp
+*.swo
+*~

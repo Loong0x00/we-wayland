@@ -1,0 +1,12 @@
+LIBRARY dwmapi
+EXPORTS
+    DwmIsCompositionEnabled
+    DwmEnableComposition
+    DwmGetWindowAttribute
+    DwmSetWindowAttribute
+    DwmExtendFrameIntoClientArea
+    DwmEnableBlurBehindWindow
+    DwmFlush
+    DwmGetColorizationColor
+    DwmDefWindowProc
+    DwmGetTransportAttributes

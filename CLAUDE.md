@@ -127,6 +127,38 @@ main  →  只包含通过验收的状态
 
 ---
 
+### Task 0：WE 渲染修复（已完成 ✓）
+
+**目标**
+使 WE 在 Proton/Wine 下能正常渲染壁纸到可见窗口。
+此任务在原计划外，是 Task 1 侦察时发现的前置问题。
+
+**问题**
+Wine 缺少 Windows 桌面的 Progman/WorkerW 窗口层级，
+WE 的 `FindWindowW("Progman")` 返回 NULL → 渲染器无法初始化。
+
+**解决方案**
+自定义 `dwmapi.dll`，通过 per-app Wine DLL override 注入 wallpaper64.exe，
+在首次 DWM API 调用时创建假桌面层级（Progman + 2x WorkerW + SHELLDLL_DefView）。
+
+**关键文件**
+- `fake-workerw/dwmapi-override.c` — 核心源码
+- `fake-workerw/dwmapi.def` — DLL 导出
+- `launch-we.sh` — Steam 启动脚本
+
+**已验证**
+- [x] Scene 壁纸渲染正常（动画+音频）
+- [x] WE UI 可正常使用
+- [x] Per-app override 不影响 launcher/CEF
+
+**已知限制**
+- Video 壁纸因 Wine MF 不完整会崩溃（非本项目问题）
+- 0x1092 timer 崩溃仍有少量（非致命，SEH 恢复）
+
+详细技术细节见 DESIGN.md "Phase 0" 节。
+
+---
+
 ### Task 1：WE 窗口侦察 + Clutter.Clone 可行性验证
 
 **目标**
