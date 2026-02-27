@@ -128,6 +128,25 @@ Clutter.Clone (used by Hanabi and GNOME's own workspace thumbnails) shows **blac
 3. **Structural windows** (Progman, WorkerW-icons) are made transparent (`opacity=0`)
 4. **launch-we.sh** monitors and re-applies properties every 5s as fallback, using the same title-based identification
 
+## Maintenance & fragile layers
+
+Most of this project's dependencies are very stable. The only regular maintenance needed is for GNOME Shell updates.
+
+**Needs attention on GNOME major releases (~yearly):**
+- `metadata.json` → add new `shell-version`
+- `metaWindow.get_description()` for X11 window ID — undocumented API, may change
+- Extension ESM import paths (`gi://`, `resource://`) — changed once in GNOME 45→46
+
+**Stable (tied to Xwayland lifespan):**
+- Mutter honoring `_NET_WM_WINDOW_TYPE_DESKTOP` for Xwayland windows
+- X11 tools (`xprop`, `xdotool`, `xwininfo`)
+
+**Very stable (won't change):**
+- WE's Progman/WorkerW discovery pattern (Windows backward compatibility)
+- Wine per-app DLL override mechanism
+- `WM_CLASS=steam_app_431960` (Steam App ID)
+- DXVK rendering through Xwayland (Proton core path)
+
 ## Project structure
 
 ```

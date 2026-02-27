@@ -5,8 +5,13 @@
 将 Wallpaper Engine（运行在 Proton/Xwayland 中）的渲染输出桥接到
 GNOME/Wayland 桌面层，实现活壁纸功能。
 
-核心方案：通过 GNOME Shell 扩展的 `Clutter.Clone` 直接克隆 WE 的
-Xwayland 窗口 actor 到桌面背景层。零拷贝，无中间进程。
+核心方案（v3）：通过自定义 `dwmapi.dll` 创建假桌面窗口层级，
+GNOME Shell 扩展 + launch 脚本将渲染窗口设为 `_NET_WM_WINDOW_TYPE_DESKTOP`，
+由 Mutter 原生放到桌面层。零拷贝，无中间进程。
+
+> **注**：Clutter.Clone 方案已验证不可行（DXVK/Vulkan Xwayland 窗口显示黑屏），
+> 详见 DESIGN.md "历史方案记录"。
+
 详细技术方案见 DESIGN.md。
 
 ---
@@ -411,6 +416,36 @@ echo "请确认壁纸是否恢复"
 - [ ] Human Gate 全部确认
 - [ ] DESIGN.md 实测数据已全部填写
 - [ ] git tag 打上 `v1.0-stable`
+
+---
+
+## 维护与易腐层分析
+
+本项目的依赖链中，各层稳定性不同。以下按风险从高到低排列：
+
+### 需定期维护（GNOME 大版本更新时）
+
+1. **`metadata.json` 的 `shell-version`** — 每个 GNOME 大版本必须手动添加新版本号
+2. **`metaWindow.get_description()` 取 X11 ID** — 非公开 API，GNOME 可能改格式或移除
+3. **Extension ESM import 路径** — GNOME 45→46 改过一次（`gi://`、`resource://`），后续可能再变
+
+### 中期稳定（依赖 Xwayland 存续）
+
+4. **Mutter 对 Xwayland 窗口尊重 `_NET_WM_WINDOW_TYPE_DESKTOP`** — Xwayland 在可预见未来不会被移除（大量软件仍有兼容性问题）
+5. **X11 工具链**（xprop、xdotool、xwininfo）— 随 Xwayland 存在，但可能不再默认安装
+6. **XShape 扩展**（input passthrough）— X11 协议级别，稳定
+
+### 长期稳定（基本不会变）
+
+7. **WE 的 Progman/WorkerW 发现模式** — Windows 向后兼容，WE 不需要改
+8. **Wine per-app DLL override 机制** — Wine 核心功能
+9. **Steam App ID = 431960 → WM_CLASS = steam_app_431960** — 不会变
+10. **DXVK 渲染到 Xwayland** — Proton 的核心路径
+
+### 维护建议
+
+- **每年一次**：GNOME 大版本发布时，检查上述第 1-3 项
+- **无需主动维护**：第 4-10 项，除非上游发生重大架构变更
 
 ---
 
