@@ -62,34 +62,49 @@ export default class WEWaylandExtension extends Extension {
     }
 
     _handleWEWindow(metaWindow) {
-        const rect = metaWindow.get_frame_rect();
-        if (rect.width < 1000) return; // Skip UI / small windows
-
         const title = metaWindow.get_title() || '';
         const desc = metaWindow.get_description() || '';
         const xid = desc.match(/0x[0-9a-f]+/)?.[0];
-        if (!xid) {
-            _log(`No X11 ID for "${title}" — skipping`);
-            return;
-        }
+        if (!xid) return;
 
-        _log(`WE window: ${xid} "${title}" ${rect.width}x${rect.height} — setting DESKTOP type`);
-
-        // Set DESKTOP type immediately
-        GLib.spawn_command_line_async(
-            `xprop -id ${xid} -f _NET_WM_WINDOW_TYPE 32a ` +
-            `-set _NET_WM_WINDOW_TYPE _NET_WM_WINDOW_TYPE_DESKTOP`
-        );
-
+        // Only target windows created by our dwmapi.dll, identified by title
         if (title === 'WE_RENDER') {
-            // Render window — raise within DESKTOP layer
+            // Render window — DESKTOP type + raise
+            _log(`RENDER: ${xid} "${title}" — DESKTOP + raise`);
+            GLib.spawn_command_line_async(
+                `xprop -id ${xid} -f _NET_WM_WINDOW_TYPE 32a ` +
+                `-set _NET_WM_WINDOW_TYPE _NET_WM_WINDOW_TYPE_DESKTOP`
+            );
             GLib.spawn_command_line_async(`xdotool windowraise ${xid}`);
-        } else {
-            // Structural window (Progman, WorkerW-icons) — make invisible
+        } else if (title === 'Program Manager') {
+            // Progman — DESKTOP type + invisible
+            _log(`HIDE: ${xid} "${title}" — DESKTOP + opacity=0`);
+            GLib.spawn_command_line_async(
+                `xprop -id ${xid} -f _NET_WM_WINDOW_TYPE 32a ` +
+                `-set _NET_WM_WINDOW_TYPE _NET_WM_WINDOW_TYPE_DESKTOP`
+            );
             GLib.spawn_command_line_async(
                 `xprop -id ${xid} -f _NET_WM_WINDOW_OPACITY 32c ` +
                 `-set _NET_WM_WINDOW_OPACITY 0`
             );
+        } else if (title === '') {
+            // Empty title — could be WorkerW-icons (structural, fullscreen)
+            // Only hide if fullscreen to avoid touching WE internal windows
+            const rect = metaWindow.get_frame_rect();
+            const monitor = global.display.get_primary_monitor();
+            const monRect = global.display.get_monitor_geometry(monitor);
+            if (rect.width >= monRect.width * 0.95 && rect.height >= monRect.height * 0.95) {
+                _log(`HIDE: ${xid} (empty title, ${rect.width}x${rect.height}) — DESKTOP + opacity=0`);
+                GLib.spawn_command_line_async(
+                    `xprop -id ${xid} -f _NET_WM_WINDOW_TYPE 32a ` +
+                    `-set _NET_WM_WINDOW_TYPE _NET_WM_WINDOW_TYPE_DESKTOP`
+                );
+                GLib.spawn_command_line_async(
+                    `xprop -id ${xid} -f _NET_WM_WINDOW_OPACITY 32c ` +
+                    `-set _NET_WM_WINDOW_OPACITY 0`
+                );
+            }
         }
+        // All other titles (Wallpaper UI, Input, Steam, etc.) → skip
     }
 }

@@ -75,18 +75,31 @@ For Wallpaper Engine in Steam, set launch options to:
 
 Start Wallpaper Engine from Steam. Select a **Scene** type wallpaper. The wallpaper should appear behind all your windows within ~1 second.
 
+### Tips
+
+- **Overview (Super key)**: Set your GNOME static wallpaper to the same image as the WE wallpaper. The overview background will blend seamlessly with the live wallpaper.
+- **Video wallpapers**: Wine's Media Foundation is incomplete, causing video-type wallpapers to crash. Use a dedicated video wallpaper plugin (e.g. [Hidamari](https://github.com/jeffshee/hidamari)) for video wallpapers instead.
+
 ## Current status
 
 **Working:**
 - Scene wallpapers render with full animation and audio
 - Wallpaper automatically placed behind all windows (DESKTOP stacking layer)
+- WE UI (wallpaper browser) works normally alongside the live wallpaper
 - Not visible in Alt+Tab, taskbar, or overview window list
 - Near-instant setup via GNOME Shell `window-created` signal
 
 **Known limitations:**
-- Video wallpapers crash (Wine Media Foundation incomplete — not our bug)
+- Video wallpapers crash (Wine Media Foundation incomplete — use a dedicated video wallpaper plugin)
 - Mouse cursor disappears over wallpaper area
-- Overview (Super key) shows static GNOME wallpaper as background, not WE
+
+**Performance (2560x1440, Scene wallpaper):**
+
+| Component | CPU | RAM |
+|---|---|---|
+| wallpaper64.exe (DXVK) | ~1% | ~378 MB |
+| gnome-shell (total) | ~6% | ~568 MB |
+| launch-we.sh watcher | ~0.1% | ~3 MB |
 
 ## How it actually works (technical)
 
@@ -110,10 +123,10 @@ Z-order is set via `SetWindowPos(HWND_BOTTOM)` in correct order (Progman first, 
 
 Clutter.Clone (used by Hanabi and GNOME's own workspace thumbnails) shows **black** for DXVK/Vulkan-rendered Xwayland windows — a fundamental incompatibility. Instead, we set the X11 window type directly:
 
-1. **GNOME extension** catches `window-created`, identifies WE windows by `WM_CLASS=steam_app_431960`, calls `xprop` to set `_NET_WM_WINDOW_TYPE_DESKTOP`
+1. **GNOME extension** catches `window-created`, identifies WE windows by `WM_CLASS=steam_app_431960` + **title matching** (`WE_RENDER`, `Program Manager`, or empty-title fullscreen), calls `xprop` to set `_NET_WM_WINDOW_TYPE_DESKTOP`. WE UI windows (e.g. "Wallpaper UI") are left untouched.
 2. **Render window** (`WE_RENDER` title) is raised within the DESKTOP layer
 3. **Structural windows** (Progman, WorkerW-icons) are made transparent (`opacity=0`)
-4. **launch-we.sh** monitors and re-applies properties every 5s as fallback
+4. **launch-we.sh** monitors and re-applies properties every 5s as fallback, using the same title-based identification
 
 ## Project structure
 

@@ -41,35 +41,57 @@ if dpy:
 _set_desktop_type() {
     local changed=0
     for wid in $(xdotool search --class steam_app_431960 2>/dev/null); do
-        # Only target fullscreen windows (skip UI / small windows)
-        local W
-        W=$(xwininfo -id "$wid" 2>/dev/null | awk '/Width:/{print $2}')
-        [ "${W:-0}" -gt 1000 ] || continue
+        # Identify by WM_NAME — only target windows created by our dwmapi.dll
+        local name
+        name=$(xprop -id "$wid" WM_NAME 2>/dev/null | sed -n 's/.*= "\(.*\)"/\1/p')
 
-        # Identify render window by WM_NAME "WE_RENDER" (set in dwmapi-override.c)
-        local is_render=false
-        xprop -id "$wid" WM_NAME 2>/dev/null | grep -q 'WE_RENDER' && is_render=true
-
-        # All fullscreen WE windows → DESKTOP type (hides from Alt+Tab)
-        if ! xprop -id "$wid" _NET_WM_WINDOW_TYPE 2>/dev/null | grep -q DESKTOP; then
-            xprop -id "$wid" \
-                -f _NET_WM_WINDOW_TYPE 32a \
-                -set _NET_WM_WINDOW_TYPE _NET_WM_WINDOW_TYPE_DESKTOP 2>/dev/null
-            changed=1
-        fi
-
-        if $is_render; then
+        if [ "$name" = "WE_RENDER" ]; then
             # === Render window: the actual wallpaper ===
-            xdotool windowraise "$wid" 2>/dev/null   # on top within DESKTOP layer
+            if ! xprop -id "$wid" _NET_WM_WINDOW_TYPE 2>/dev/null | grep -q DESKTOP; then
+                xprop -id "$wid" \
+                    -f _NET_WM_WINDOW_TYPE 32a \
+                    -set _NET_WM_WINDOW_TYPE _NET_WM_WINDOW_TYPE_DESKTOP 2>/dev/null
+                changed=1
+            fi
+            xdotool windowraise "$wid" 2>/dev/null
             _set_input_passthrough "$wid"
-            echo "$(date +%T) RENDER $wid (${W}px) — raise + passthrough" >> "$_LOG"
-        else
-            # === Structural window (Progman / WorkerW-icons): make invisible ===
+            echo "$(date +%T) RENDER $wid \"$name\" — raise + passthrough" >> "$_LOG"
+
+        elif [ "$name" = "Program Manager" ]; then
+            # === Progman: structural, make invisible ===
+            if ! xprop -id "$wid" _NET_WM_WINDOW_TYPE 2>/dev/null | grep -q DESKTOP; then
+                xprop -id "$wid" \
+                    -f _NET_WM_WINDOW_TYPE 32a \
+                    -set _NET_WM_WINDOW_TYPE _NET_WM_WINDOW_TYPE_DESKTOP 2>/dev/null
+                changed=1
+            fi
             xprop -id "$wid" \
                 -f _NET_WM_WINDOW_OPACITY 32c \
                 -set _NET_WM_WINDOW_OPACITY 0 2>/dev/null
-            echo "$(date +%T) HIDE   $wid (${W}px) — opacity=0" >> "$_LOG"
+            echo "$(date +%T) HIDE   $wid \"$name\" — opacity=0" >> "$_LOG"
+
+        elif [ -z "$name" ]; then
+            # Empty title — could be WorkerW-icons (structural) or WE internal
+            # Only hide if fullscreen (matches screen resolution)
+            local W H
+            W=$(xwininfo -id "$wid" 2>/dev/null | awk '/Width:/{print $2}')
+            H=$(xwininfo -id "$wid" 2>/dev/null | awk '/Height:/{print $2}')
+            local SCREEN_W SCREEN_H
+            read SCREEN_W SCREEN_H < <(xdpyinfo 2>/dev/null | awk '/dimensions:/{split($2,a,"x"); print a[1], a[2]}')
+            if [ "${W:-0}" -eq "${SCREEN_W:-2560}" ] && [ "${H:-0}" -eq "${SCREEN_H:-1440}" ]; then
+                if ! xprop -id "$wid" _NET_WM_WINDOW_TYPE 2>/dev/null | grep -q DESKTOP; then
+                    xprop -id "$wid" \
+                        -f _NET_WM_WINDOW_TYPE 32a \
+                        -set _NET_WM_WINDOW_TYPE _NET_WM_WINDOW_TYPE_DESKTOP 2>/dev/null
+                    changed=1
+                fi
+                xprop -id "$wid" \
+                    -f _NET_WM_WINDOW_OPACITY 32c \
+                    -set _NET_WM_WINDOW_OPACITY 0 2>/dev/null
+                echo "$(date +%T) HIDE   $wid (empty,${W}x${H}) — opacity=0" >> "$_LOG"
+            fi
         fi
+        # All other windows (Wallpaper UI, Input, Steam, etc.) → skip
     done
     return $changed
 }
