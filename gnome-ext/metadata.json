@@ -1,0 +1,7 @@
+{
+    "uuid": "we-wayland@local",
+    "name": "WE Wayland",
+    "description": "Bridge Wallpaper Engine rendering to GNOME Wayland desktop background",
+    "shell-version": ["49"],
+    "version": 1
+}

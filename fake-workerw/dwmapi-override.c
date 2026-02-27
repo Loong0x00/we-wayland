@@ -150,10 +150,13 @@ static void ensure_desktop_windows(void)
         }
     }
 
-    /* WorkerW-render (render target — WE draws here) */
+    /* WorkerW-render (render target — WE draws here)
+     * Title "WE_RENDER" is a marker for launch-we.sh to identify this
+     * window on X11 and set _NET_WM_WINDOW_TYPE_DESKTOP.
+     * WE uses FindWindowExW(... NULL) which ignores title — safe to set. */
     g_workerW_render = CreateWindowExW(
         WS_EX_NOACTIVATE,
-        L"WorkerW", L"",
+        L"WorkerW", L"WE_RENDER",
         WS_POPUP,
         0, 0, w, h,
         NULL, NULL, hInst, NULL);
