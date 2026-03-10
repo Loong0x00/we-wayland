@@ -6,7 +6,7 @@
 
 # === Diagnostic logging ===
 export DXVK_LOG_LEVEL=info
-export DXVK_LOG_PATH=/tmp/dxvk
+export DXVK_LOG_PATH=/tmp
 
 # Wine: log DLL loading + SEH exceptions (moderate verbosity)
 export WINEDEBUG=+loaddll,+seh

@@ -157,8 +157,25 @@ WE 的 `FindWindowW("Progman")` 返回 NULL → 渲染器无法初始化。
 - [x] Per-app override 不影响 launcher/CEF
 
 **已知限制**
-- Video 壁纸因 Wine MF 不完整会崩溃（非本项目问题）
+- Wine Media Foundation 不完整：
+  - Video 类壁纸（纯 mp4 播放）：崩溃（Access Violation，WE 内部未处理 MF 错误）
+  - `SetAutoPlay`/`SetLoop` 是真正的 stub（存标志位但播放时不消费）
+  - Wine Bugzilla: Bug 59506
+  - GE-Proton issue: https://github.com/GloriousEggroll/proton-ge-custom/issues/474
 - 0x1092 timer 崩溃仍有少量（非致命，SEH 恢复）
+- Overview（Super 键）显示静态壁纸而非 WE（Clutter.Clone 对 DXVK 窗口黑屏，无解）
+
+**已修复：MF 视频纹理（Scene + supportsvideo）**
+- 根因：Wine 的 `msvproc.dll`（Video Processor MFT）注册表 OutputTypes 缺少 RGB32
+  - GStreamer 后端（videoconvert）本身支持 NV12→RGB32，但注册表元数据未声明
+  - `MFTEnumEx(MFT_CATEGORY_VIDEO_PROCESSOR, NV12→RGB32)` 返回 0 → 拓扑连接失败
+- 修复：在 Wine prefix `system.reg` 中给 msvproc（88753b26）的 OutputTypes 追加 RGB32
+  - 同时修改 64-bit 和 Wow6432Node 两处
+  - 备份：`system.reg.bak`
+
+**已验证不可行的 MF 修复尝试**
+- ~~DLL 替换~~：从系统 Wine 11.4 拷贝 mf/mfplat DLL 到 GE-Proton prefix → ABI 不兼容
+- ~~系统 Wine 11.4 + DXVK~~：自定义 Steam 兼容工具 → WE 完全黑屏（缺 Proton 补丁）
 
 详细技术细节见 DESIGN.md "Phase 0" 节。
 
